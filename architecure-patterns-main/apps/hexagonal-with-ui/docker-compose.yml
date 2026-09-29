@@ -1,0 +1,59 @@
+services:
+  # Primary PostgreSQL Database for Development / Application Data
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - taskflow_hexagonal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Dedicated Test PostgreSQL Database for Isolation
+  postgres-test:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflowtest
+      POSTGRES_DB: taskflow_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - taskflow_hexagonal_postgres_test_data:/var/lib/postgresql/data
+
+  # Hexagonal Architecture Backend Service
+  hexagonal:
+    build:
+      context: ./hexagonal
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow?schema=public
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Note: No host port is exposed for the hexagonal backend.
+    # The reverse proxy inside the UI container is the only entrypoint that can reach this service.
+
+  # React Frontend UI with Nginx Reverse Proxy
+  ui:
+    build:
+      context: ./ui
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - hexagonal
+
+volumes:
+  taskflow_hexagonal_postgres_data:
+  taskflow_hexagonal_postgres_test_data:
